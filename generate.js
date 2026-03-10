@@ -1,35 +1,54 @@
 // Female Dominance Studio — Gemini Image Generation Proxy
 // Deploy on Vercel. Set GEMINI_API_KEY in Vercel environment variables.
-// Free tier: 500 images/day, no credit card needed from Google AI Studio.
 
 module.exports = async function handler(req, res) {
-  // CORS — allow all origins (your GitHub Pages app)
+  // CORS headers — must be set before ANYTHING else
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  // Health check — GET request just confirms proxy is alive
+  if (req.method === 'GET') {
+    return res.status(200).json({ status: 'ok', message: 'FD Studio Gemini proxy is running' });
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set in Vercel env vars' });
+  if (!apiKey) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY not configured in Vercel environment variables' });
+  }
 
   try {
-    const { prompt, model, refImageBase64, refImageMime } = req.body;
-    if (!prompt) return res.status(400).json({ error: 'prompt is required' });
+    const body = req.body || {};
+    const { prompt, model, refImageBase64, refImageMime } = body;
 
+    if (!prompt) {
+      return res.status(400).json({ error: 'prompt is required' });
+    }
+
+    // Use gemini-2.0-flash-exp — confirmed free, available, supports image generation
     const geminiModel = model || 'gemini-2.0-flash-exp';
 
-    // Build parts — text prompt + optional reference image
+    // Build parts
     const parts = [];
 
     if (refImageBase64) {
       parts.push({
         text:
           'CRITICAL: The attached reference photo shows the EXACT person for this scene. ' +
-          'Preserve their face, facial features, skin tone, eye shape, hair colour and style, ' +
-          'body proportions, and every detail of their outfit and footwear (including heel type/height) ' +
-          'with complete accuracy. Do NOT alter the person\'s appearance in any way. ' +
-          'Only change the scene background and environment as described.\n\n' + prompt
+          'Preserve their face, features, skin tone, eye shape, hair colour/style, ' +
+          'body proportions, outfit and footwear (including heel type/height) exactly. ' +
+          'Do NOT change the person\'s appearance at all. ' +
+          'Only change the scene background/environment as described below.\n\n' + prompt
       });
       parts.push({
         inlineData: {
@@ -42,31 +61,48 @@ module.exports = async function handler(req, res) {
     }
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`,
+      'https://generativelanguage.googleapis.com/v1beta/models/' + geminiModel + ':generateContent?key=' + apiKey,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts }],
-          generationConfig: {
-            responseModalities: ['Text', 'Image']
-          }
+          contents: [{ role: 'user', parts: parts }],
+          generationConfig: { responseModalities: ['Text', 'Image'] }
         })
       }
     );
 
+    const responseText = await geminiRes.text();
+
     if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      return res.status(geminiRes.status).json({ error: 'Gemini error: ' + errText });
+      return res.status(geminiRes.status).json({
+        error: 'Gemini API error ' + geminiRes.status,
+        details: responseText
+      });
     }
 
-    const data = await geminiRes.json();
-    const candidates = (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      return res.status(500).json({ error: 'Invalid JSON from Gemini', raw: responseText.slice(0, 500) });
+    }
 
-    const imagePart = candidates.find(function(p) { return p.inlineData && p.inlineData.mimeType && p.inlineData.mimeType.startsWith('image/'); });
+    const parts2 = (data.candidates &&
+                    data.candidates[0] &&
+                    data.candidates[0].content &&
+                    data.candidates[0].content.parts) || [];
+
+    const imagePart = parts2.find(function(p) {
+      return p.inlineData && p.inlineData.mimeType && p.inlineData.mimeType.startsWith('image/');
+    });
+
     if (!imagePart) {
-      const textPart = candidates.find(function(p) { return p.text; });
-      return res.status(500).json({ error: 'No image returned', debug: (textPart && textPart.text) || JSON.stringify(data) });
+      const textPart = parts2.find(function(p) { return p.text; });
+      return res.status(500).json({
+        error: 'No image in Gemini response',
+        debug: textPart ? textPart.text : JSON.stringify(data).slice(0, 500)
+      });
     }
 
     return res.status(200).json({
@@ -75,6 +111,7 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || 'Unknown server error' });
   }
 };
+
