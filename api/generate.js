@@ -46,7 +46,7 @@ module.exports = async function handler(req, res) {
         text:
           'CRITICAL: The attached reference photo shows the EXACT person for this scene. ' +
           'Preserve their face, features, skin tone, eye shape, hair colour/style, ' +
-          'body proportions, outfit but footwear as stiletto heels matching dress if lady wears non heels/sandals. ' +
+          'body proportions, outfit and footwear (including heel type/height) exactly. ' +
           'Do NOT change the person\'s appearance at all. ' +
           'Only change the scene background/environment as described below.\n\n' + prompt
       });
