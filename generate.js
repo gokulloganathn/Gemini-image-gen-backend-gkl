@@ -2,10 +2,8 @@
 // Deploy on Vercel. Set GEMINI_API_KEY in Vercel environment variables.
 // Free tier: 500 images/day, no credit card needed from Google AI Studio.
 
-export const config = { maxDuration: 60 }; // Vercel max for free plan
-
-export default async function handler(req, res) {
-  // CORS — allow your GitHub Pages domain
+module.exports = async function handler(req, res) {
+  // CORS — allow all origins (your GitHub Pages app)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -19,20 +17,16 @@ export default async function handler(req, res) {
     const { prompt, model, refImageBase64, refImageMime } = req.body;
     if (!prompt) return res.status(400).json({ error: 'prompt is required' });
 
-    // Choose model — default to gemini-2.5-flash-image (500/day free)
-    const geminiModel = model || 'gemini-2.5-flash-image';
+    const geminiModel = model || 'gemini-2.0-flash-exp';
 
-    // Build parts array
-    // If reference image provided: [text_instruction, inline_image]
-    // Gemini reads both together for face/costume-faithful generation
+    // Build parts — text prompt + optional reference image
     const parts = [];
 
     if (refImageBase64) {
-      // Face preservation instruction FIRST, then reference image
       parts.push({
         text:
           'CRITICAL: The attached reference photo shows the EXACT person for this scene. ' +
-          'You MUST preserve their face, facial features, skin tone, eye shape, hair colour and style, ' +
+          'Preserve their face, facial features, skin tone, eye shape, hair colour and style, ' +
           'body proportions, and every detail of their outfit and footwear (including heel type/height) ' +
           'with complete accuracy. Do NOT alter the person\'s appearance in any way. ' +
           'Only change the scene background and environment as described.\n\n' + prompt
@@ -40,7 +34,7 @@ export default async function handler(req, res) {
       parts.push({
         inlineData: {
           mimeType: refImageMime || 'image/jpeg',
-          data: refImageBase64  // pure base64, no data:... prefix
+          data: refImageBase64
         }
       });
     } else {
@@ -63,21 +57,18 @@ export default async function handler(req, res) {
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
-      return res.status(geminiRes.status).json({ error: `Gemini error: ${errText}` });
+      return res.status(geminiRes.status).json({ error: 'Gemini error: ' + errText });
     }
 
     const data = await geminiRes.json();
-    const candidates = data?.candidates?.[0]?.content?.parts || [];
+    const candidates = (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
 
-    // Find the image part
-    const imagePart = candidates.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+    const imagePart = candidates.find(function(p) { return p.inlineData && p.inlineData.mimeType && p.inlineData.mimeType.startsWith('image/'); });
     if (!imagePart) {
-      // Return any text response for debugging
-      const textPart = candidates.find(p => p.text);
-      return res.status(500).json({ error: 'No image returned', debug: textPart?.text || JSON.stringify(data) });
+      const textPart = candidates.find(function(p) { return p.text; });
+      return res.status(500).json({ error: 'No image returned', debug: (textPart && textPart.text) || JSON.stringify(data) });
     }
 
-    // Return base64 image + mime type
     return res.status(200).json({
       imageBase64: imagePart.inlineData.data,
       mimeType: imagePart.inlineData.mimeType
@@ -86,4 +77,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-}
+};
