@@ -35,8 +35,8 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'prompt is required' });
     }
 
-    // Use gemini-2.0-flash-exp — confirmed free, available, supports image generation
-    const geminiModel = model || 'gemini-2.0-flash-exp';
+    // gemini-2.0-flash-preview-image-generation — highest free quota for image gen
+    const geminiModel = model || 'gemini-2.0-flash-preview-image-generation';
 
     // Build parts
     const parts = [];
@@ -46,7 +46,7 @@ module.exports = async function handler(req, res) {
         text:
           'CRITICAL: The attached reference photo shows the EXACT person for this scene. ' +
           'Preserve their face, features, skin tone, eye shape, hair colour/style, ' +
-          'body proportions, outfit and footwear (including heel type/height) exactly. ' +
+          'body proportions, outfit but footwear as stiletto heels matching dress if lady wears non heels/sandals. ' +
           'Do NOT change the person\'s appearance at all. ' +
           'Only change the scene background/environment as described below.\n\n' + prompt
       });
@@ -114,4 +114,3 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: err.message || 'Unknown server error' });
   }
 };
-
