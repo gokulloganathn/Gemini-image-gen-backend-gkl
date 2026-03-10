@@ -35,8 +35,11 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'prompt is required' });
     }
 
-    // gemini-2.0-flash-preview-image-generation — highest free quota for image gen
-    const geminiModel = model || 'gemini-2.0-flash-preview-image-generation';
+    // Current working Gemini image generation models (as of March 2026):
+    // gemini-2.5-flash-image — free tier, GA since Oct 2025
+    // gemini-3.1-flash-image-preview — Nano Banana 2, preview (billed)
+    // gemini-3-pro-image-preview — Nano Banana Pro, preview (billed)
+    const geminiModel = model || 'gemini-2.5-flash-image';
 
     // Build parts
     const parts = [];
