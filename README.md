@@ -1,5 +1,6 @@
 # FD Studio — Gemini Proxy (Vercel)
 
+
 ## What this does
 Proxies image generation requests from your GitHub Pages app → Google Gemini API.
 - **500 free images/day** (Google AI Studio free tier, no credit card)
